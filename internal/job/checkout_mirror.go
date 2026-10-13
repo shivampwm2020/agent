@@ -33,6 +33,16 @@ func remoteMirrorStagingDir(mirrorDir string) string {
 	return filepath.Join(filepath.Dir(mirrorDir), fmt.Sprintf(".remote-mirror-%x", sum[:8]))
 }
 
+// mirrorGitFlags returns the global git flags for commands that update refs in
+// the shared on-host mirror. Ref updates run hooks such as
+// reference-transaction, and the mirror may be writable by other jobs or users
+// on the host, so hooks are disabled. A bare mirror has no legitimate use for
+// them. Command-line config takes precedence over the mirror's own config,
+// including any core.hooksPath set there.
+func mirrorGitFlags(mirrorDir string) []string {
+	return []string{"-c", "core.hooksPath=/dev/null", "--git-dir", mirrorDir}
+}
+
 func (e *Executor) getOrUpdateMirrorDir(ctx context.Context, repository string, attempt *remoteMirrorAttempt) (string, error) {
 	var mirrorDir string
 	// Skip updating the Git mirror before using it?
@@ -373,7 +383,7 @@ func (e *Executor) updateGitMirror(ctx context.Context, repository string, attem
 		if err := e.traceOp(ctx, "git.mirror.fetch", func(ctx context.Context) error {
 			return gitFetch(ctx, gitFetchArgs{
 				Shell:      e.shell,
-				GitFlags:   []string{"--git-dir", mirrorDir},
+				GitFlags:   mirrorGitFlags(mirrorDir),
 				Repository: "origin",
 				RefSpecs:   refspecs,
 				Retry:      retry,
@@ -395,7 +405,7 @@ func (e *Executor) updateGitMirror(ctx context.Context, repository string, attem
 		// a clean host or with a clean checkout.)
 		// TODO: Investigate getting the ref from the main repo and passing
 		// that in here.
-		cmd := e.shell.Command("git", "--git-dir", mirrorDir, "fetch", "origin")
+		cmd := e.shell.Command("git", append(mirrorGitFlags(mirrorDir), "fetch", "origin")...)
 		if err := e.traceOp(ctx, "git.mirror.fetch", func(ctx context.Context) error {
 			return cmd.Run(ctx)
 		}); err != nil {
@@ -410,7 +420,7 @@ func (e *Executor) updateGitMirror(ctx context.Context, repository string, attem
 		if err := e.shell.Command("git", "--git-dir", mirrorDir, "fsck").Run(ctx); err != nil {
 			e.shell.Warningf("Couldn't run git fsck: %v", err)
 		}
-		if err := e.shell.Command("git", "--git-dir", mirrorDir, "gc").Run(ctx); err != nil {
+		if err := e.shell.Command("git", append(mirrorGitFlags(mirrorDir), "gc")...).Run(ctx); err != nil {
 			e.shell.Warningf("Couldn't run git gc: %v", err)
 		}
 	}
