@@ -1086,7 +1086,9 @@ func TestUpdatingGitMirrorDoesNotRunMirrorHooks(t *testing.T) {
 		t.Fatalf("tester.Repo.RevParse(HEAD) error = %v", err)
 	}
 
-	tester.RunAndCheck(t, "BUILDKITE_COMMIT="+strings.TrimSpace(commit))
+	// Debug is off because the commit presence check fails with hidden stderr,
+	// which trips a data race in the debug-only stderr logger under -race.
+	tester.RunAndCheck(t, "BUILDKITE_COMMIT="+strings.TrimSpace(commit), "BUILDKITE_AGENT_DEBUG=false")
 
 	if !strings.Contains(tester.Output, "Updating existing repository mirror") {
 		t.Fatalf("tester.Output does not show a mirror update:\n%s", tester.Output)
